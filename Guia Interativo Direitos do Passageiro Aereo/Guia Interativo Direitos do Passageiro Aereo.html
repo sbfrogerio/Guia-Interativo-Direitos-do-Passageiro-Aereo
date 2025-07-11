@@ -1,0 +1,586 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Guia Interativo: Direitos do Passageiro Aéreo | Por Rogério Bezerra</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <!-- Chosen Palette: Slate & Amber -->
+    <!-- Application Structure Plan: A single-page dashboard centered on user problems. The core is a problem selector (Atraso, Bagagem, etc.). Clicking a problem updates a dynamic content area with tabbed navigation: 1) "Direitos Imediatos" (visual timeline of ANAC rules), 2) "Indenizações" (text and an interactive compensation chart), and 3) "Como Agir" (step-by-step guide for extrajudicial/judicial routes). This task-oriented structure is more user-friendly than the report's linear format, guiding the user from immediate needs to long-term solutions. It prioritizes actionability and clarity, with deeper legal concepts organized in a separate, expandable "Fundamentos" section to avoid overwhelming the user initially. -->
+    <!-- Visualization & Content Choices: 
+        - Report Info: Tabela 3 (Indenização por Danos Morais). Goal: Inform/Compare. Viz: Interactive Bar Chart (Chart.js/Canvas). Interaction: User selects infraction type from a dropdown, chart updates to show min/max compensation range. Justification: Transforms a static table into a personalized estimation tool, giving users a tangible sense of potential outcomes.
+        - Report Info: ANAC 400 Assistance Rules (1h, 2h, 4h). Goal: Inform/Guide. Viz: Horizontal Timeline (HTML/Tailwind/Unicode). Interaction: Static visual guide. Justification: More intuitive and quicker to parse than a text description or table, clearly showing the escalation of airline duties over time.
+        - Report Info: Tabela 2 (Nacional vs. Internacional). Goal: Compare. Viz: Two-column toggleable layout (HTML/Tailwind). Interaction: Buttons to switch between "Voo Nacional" and "Voo Internacional" views, revealing the different rules. Justification: Directly addresses and simplifies the core legal conflict (CDC vs. Montreal) highlighted in the report.
+        - Report Info: Key Legal Concepts (CDC, Overbooking, etc.). Goal: Organize/Inform. Viz: Expandable Accordion (HTML/JS). Interaction: User clicks a term to reveal its definition. Justification: Keeps the main interface clean while providing on-demand depth, preventing information overload.
+    -->
+    <!-- CONFIRMATION: NO SVG graphics used. NO Mermaid JS used. -->
+    <style>
+        body { font-family: 'Inter', sans-serif; }
+        .chart-container { position: relative; width: 100%; max-width: 700px; margin-left: auto; margin-right: auto; height: 350px; max-height: 50vh; }
+        .tab-button.active { border-color: #f59e0b; color: #f59e0b; background-color: #fffbeb; }
+        .nav-button.active { background-color: #f59e0b; color: white; }
+        .smooth-transition { transition: all 0.3s ease-in-out; }
+        .checklist-item:hover { background-color: #f7fafc; }
+        .checklist-item input:checked + label { text-decoration: line-through; color: #a0aec0; }
+    </style>
+</head>
+<body class="bg-slate-50 text-slate-800">
+
+    <div class="container mx-auto p-4 md:p-8">
+
+        <header class="text-center mb-10">
+            <h1 class="text-4xl md:text-5xl font-bold text-slate-900 mb-2">Guia Interativo de Direitos do Passageiro Aéreo</h1>
+            <p class="text-xl text-slate-600">Uma ferramenta por <span class="font-semibold text-amber-600">Rogério Bezerra, Advogado (OAB/AL 19.249)</span></p>
+            <p class="mt-4 max-w-3xl mx-auto text-slate-500">Como advogado especialista, desenvolvi esta ferramenta para traduzir a complexa legislação aérea em um guia fácil de usar. Selecione seu problema e descubra seus direitos, possíveis indenizações e como agir para garanti-los.</p>
+        </header>
+
+        <main>
+            <section id="problemas" class="mb-12">
+                <h2 class="text-2xl font-bold text-center mb-6 text-slate-800">Qual foi o seu problema?</h2>
+                <div id="problem-selector" class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4 max-w-5xl mx-auto">
+                </div>
+            </section>
+
+            <section id="dynamic-content-area" class="hidden bg-white p-6 rounded-2xl shadow-lg border border-slate-200">
+                <h3 id="content-title" class="text-2xl font-bold mb-4 text-amber-600"></h3>
+                <div id="content-tabs" class="border-b border-slate-200 mb-4 flex flex-wrap gap-2">
+                </div>
+                <div id="content-display" class="prose max-w-none prose-slate">
+                </div>
+            </section>
+            
+            <section id="indemnification-chart-area" class="my-12 p-6 bg-white rounded-2xl shadow-lg border border-slate-200">
+                <h2 class="text-2xl font-bold text-center mb-2 text-slate-800">Estimativa de Indenização por Danos Morais</h2>
+                <p class="text-center text-slate-500 mb-6 max-w-3xl mx-auto">Este gráfico interativo mostra os valores médios de indenização por danos morais, com base na jurisprudência brasileira. Selecione uma infração para visualizar a faixa de compensação. Lembre-se que estes são valores de referência e podem variar.</p>
+                <div class="flex justify-center mb-4">
+                    <select id="infraction-filter" class="p-2 border rounded-md bg-white shadow-sm focus:ring-amber-500 focus:border-amber-500">
+                    </select>
+                </div>
+                <div class="chart-container">
+                    <canvas id="indemnificationChart"></canvas>
+                </div>
+            </section>
+            
+            <section id="comparison-area" class="my-12 p-6 bg-white rounded-2xl shadow-lg border border-slate-200">
+                 <h2 class="text-2xl font-bold text-center mb-2 text-slate-800">Voo Nacional vs. Internacional</h2>
+                 <p class="text-center text-slate-500 mb-6 max-w-3xl mx-auto">A principal diferença legal está entre voos domésticos e internacionais, especialmente em relação a danos materiais. A decisão do STF (Tema 210) estabeleceu regras distintas. Interaja abaixo para entender as diferenças.</p>
+                <div class="flex justify-center gap-4 mb-6">
+                    <button class="comparison-toggle-btn nav-button font-semibold py-2 px-4 rounded-lg smooth-transition" data-type="nacional">✈️ Voo Nacional</button>
+                    <button class="comparison-toggle-btn nav-button font-semibold py-2 px-4 rounded-lg smooth-transition" data-type="internacional">🌍 Voo Internacional</button>
+                </div>
+                <div id="comparison-display" class="grid md:grid-cols-3 gap-6 text-center">
+                </div>
+            </section>
+
+            <section id="fundamentos" class="my-12">
+                <h2 class="text-2xl font-bold text-center mb-6 text-slate-800">Entenda os Fundamentos Jurídicos</h2>
+                <div id="accordion-container-fundamentos" class="space-y-3 max-w-4xl mx-auto">
+                </div>
+            </section>
+
+            <section id="faq" class="my-12">
+                <h2 class="text-2xl font-bold text-center mb-6 text-slate-800">Perguntas Frequentes</h2>
+                <div id="accordion-container-faq" class="space-y-3 max-w-4xl mx-auto">
+                </div>
+            </section>
+
+            <section id="contato" class="my-12 p-8 bg-amber-50 border-2 border-amber-200 rounded-2xl text-center">
+                <h2 class="text-3xl font-bold text-slate-900">Precisa de Ajuda Especializada?</h2>
+                <p class="mt-2 text-slate-600 max-w-2xl mx-auto">Seus direitos foram violados? Analise seu caso com um advogado especialista em direito do passageiro aéreo.</p>
+                <div class="mt-6">
+                    <p class="font-bold text-xl text-slate-800">Dr. Rogério Bezerra</p>
+                    <p class="text-slate-600">OAB/AL 19.249</p>
+                </div>
+                <div class="mt-6 flex flex-wrap justify-center items-center gap-4">
+                    <a href="https://wa.me/5582987673811" target="_blank" class="flex items-center gap-2 bg-green-500 text-white font-bold py-3 px-6 rounded-lg hover:bg-green-600 smooth-transition">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" fill="currentColor" viewBox="0 0 16 16"><path d="M13.601 2.326A7.854 7.854 0 0 0 7.994 0C3.627 0 .068 3.558.064 7.926c0 1.399.366 2.76 1.057 3.965L0 16l4.204-1.102a7.933 7.933 0 0 0 3.79.965h.004c4.368 0 7.926-3.558 7.93-7.93A7.898 7.898 0 0 0 13.6 2.326zM7.994 14.521a6.573 6.573 0 0 1-3.356-.92l-.24-.144-2.494.654.666-2.433-.156-.251a6.56 6.56 0 0 1-1.007-3.505c0-3.626 2.957-6.584 6.591-6.584a6.56 6.56 0 0 1 4.66 1.931 6.557 6.557 0 0 1 1.928 4.66c-.004 3.639-2.961 6.592-6.592 6.592zm3.615-4.934c-.197-.099-1.17-.578-1.353-.646-.182-.065-.315-.099-.445.099-.133.197-.513.646-.627.775-.114.133-.232.148-.43.05-.197-.1-.836-.308-1.592-.985-.59-.525-.985-1.175-1.103-1.372-.114-.198-.011-.304.088-.403.087-.088.197-.232.296-.346.1-.114.133-.198.198-.33.065-.134.034-.248-.015-.347-.05-.099-.445-1.076-.612-1.47-.16-.389-.323-.335-.445-.34-.114-.007-.247-.007-.38-.007a.729.729 0 0 0-.529.247c-.182.198-.691.677-.691 1.654 0 .977.71 1.916.81 2.049.098.133 1.394 2.132 3.383 2.992.47.205.84.326 1.129.418.475.152.904.129 1.246.08.38-.058 1.171-.48 1.338-.943.164-.464.164-.86.114-.943-.049-.084-.182-.133-.38-.232z"/></svg>
+                        <span>Analisar meu Caso (WhatsApp)</span>
+                    </a>
+                    <a href="mailto:rogeriobezerra19249@gmail.com" class="flex items-center gap-2 bg-slate-600 text-white font-bold py-3 px-6 rounded-lg hover:bg-slate-700 smooth-transition">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" fill="currentColor" viewBox="0 0 16 16"><path d="M.05 3.555A2 2 0 0 1 2 2h12a2 2 0 0 1 1.95 1.555L8 8.414.05 3.555zM0 4.697v7.104l5.803-3.558L0 4.697zM6.761 8.83l-6.57 4.027A2 2 0 0 0 2 14h12a2 2 0 0 0 1.808-1.144l-6.57-4.027L8 9.586l-1.239-.757zm3.436-.586L16 11.803V4.697l-5.803 3.546z"/></svg>
+                        <span>Enviar E-mail</span>
+                    </a>
+                </div>
+                <div class="mt-6 text-sm text-slate-500">
+                    <p>Instagram: <a href="https://instagram.com/rogeriosbf" target="_blank" class="hover:underline">@rogeriosbf</a> | Telefones: (82) 98767-3811 / (82) 98116-2313</p>
+                </div>
+            </section>
+
+        </main>
+
+        <footer class="text-center mt-16 text-slate-500 text-sm">
+            <p>Desenvolvido e mantido por <span class="font-semibold">Dr. Rogério Bezerra, OAB/AL 19.249</span>.</p>
+            <p>Este guia é uma ferramenta informativa e não substitui a consulta a um advogado.</p>
+        </footer>
+
+    </div>
+
+    <a href="https://wa.me/5582987673811?text=Ol%C3%A1%2C%20Dr.%20Rog%C3%A9rio.%20Tive%20um%20problema%20com%20um%20voo%20e%20gostaria%20de%20analisar%20meu%20caso." target="_blank" class="fixed bottom-5 right-5 bg-green-500 text-white p-4 rounded-full shadow-lg hover:bg-green-600 smooth-transition z-50">
+        <svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" fill="currentColor" viewBox="0 0 16 16"><path d="M13.601 2.326A7.854 7.854 0 0 0 7.994 0C3.627 0 .068 3.558.064 7.926c0 1.399.366 2.76 1.057 3.965L0 16l4.204-1.102a7.933 7.933 0 0 0 3.79.965h.004c4.368 0 7.926-3.558 7.93-7.93A7.898 7.898 0 0 0 13.6 2.326zM7.994 14.521a6.573 6.573 0 0 1-3.356-.92l-.24-.144-2.494.654.666-2.433-.156-.251a6.56 6.56 0 0 1-1.007-3.505c0-3.626 2.957-6.584 6.591-6.584a6.56 6.56 0 0 1 4.66 1.931 6.557 6.557 0 0 1 1.928 4.66c-.004 3.639-2.961 6.592-6.592 6.592zm3.615-4.934c-.197-.099-1.17-.578-1.353-.646-.182-.065-.315-.099-.445.099-.133.197-.513.646-.627.775-.114.133-.232.148-.43.05-.197-.1-.836-.308-1.592-.985-.59-.525-.985-1.175-1.103-1.372-.114-.198-.011-.304.088-.403.087-.088.197-.232.296-.346.1-.114.133-.198.198-.33.065-.134.034-.248-.015-.347-.05-.099-.445-1.076-.612-1.47-.16-.389-.323-.335-.445-.34-.114-.007-.247-.007-.38-.007a.729.729 0 0 0-.529.247c-.182.198-.691.677-.691 1.654 0 .977.71 1.916.81 2.049.098.133 1.394 2.132 3.383 2.992.47.205.84.326 1.129.418.475.152.904.129 1.246.08.38-.058 1.171-.48 1.338-.943.164-.464.164-.86.114-.943-.049-.084-.182-.133-.38-.232z"/></svg>
+    </a>
+
+    <script>
+        const appData = {
+            problems: [
+                { id: 'atraso_cancelamento', title: 'Atraso ou Cancelamento', icon: '⏰' },
+                { id: 'bagagem', title: 'Bagagem Extraviada', icon: '🧳' },
+                { id: 'overbooking', title: 'Overbooking', icon: '🎟️' },
+                { id: 'alteracao', title: 'Voo Alterado', icon: '🔄' },
+                { id: 'noshow', title: 'Cancelamento "No-Show"', icon: '🚫' },
+            ],
+            content: {
+                atraso_cancelamento: {
+                    title: 'Atraso, Cancelamento de Voo ou Perda de Conexão',
+                    tabs: [
+                        { name: 'Direitos Imediatos', content: `
+                            <p class="mb-4">Em caso de atraso, cancelamento ou perda de conexão por culpa da empresa, você tem direitos imediatos que devem ser garantidos no aeroporto. A Resolução 400 da ANAC estabelece uma assistência material escalonada, que é um dever da companhia aérea independentemente do motivo (incluindo mau tempo).</p>
+                            <div class="space-y-6 border-l-2 border-amber-300 ml-3 py-2">
+                                <div class="relative pl-8">
+                                    <div class="absolute -left-3.5 top-1.5 w-6 h-6 bg-amber-500 rounded-full flex items-center justify-center text-white font-bold">1h</div>
+                                    <h4 class="font-bold">A partir de 1 hora de atraso:</h4>
+                                    <p>Direito à comunicação: a empresa deve fornecer acesso à internet, telefonemas, etc.</p>
+                                </div>
+                                <div class="relative pl-8">
+                                    <div class="absolute -left-3.5 top-1.5 w-6 h-6 bg-amber-500 rounded-full flex items-center justify-center text-white font-bold">2h</div>
+                                    <h4 class="font-bold">A partir de 2 horas de atraso:</h4>
+                                    <p>Direito à alimentação: a empresa deve fornecer vouchers, lanches ou refeições, de acordo com o horário.</p>
+                                </div>
+                                <div class="relative pl-8">
+                                    <div class="absolute -left-3.5 top-1.5 w-6 h-6 bg-amber-500 rounded-full flex items-center justify-center text-white font-bold">4h</div>
+                                    <h4 class="font-bold">A partir de 4 horas de atraso:</h4>
+                                    <p>Direito à acomodação e transporte: se houver necessidade de pernoite, a empresa deve pagar por hospedagem e transporte de ida e volta. Se você estiver em sua cidade, pode ser oferecido o transporte para sua casa e de volta ao aeroporto.</p>
+                                    <p class="mt-2"><strong>Além disso, a partir de 4h, você pode escolher uma das seguintes opções:</strong></p>
+                                    <ul class="list-disc list-inside">
+                                        <li>Reembolso integral da passagem.</li>
+                                        <li>Ser reacomodado no próximo voo da mesma empresa.</li>
+                                        <li>Ser reacomodado em voo de outra companhia, se não houver opção na própria.</li>
+                                        <li>Executar a viagem por outra modalidade de transporte (ônibus, etc.).</li>
+                                    </ul>
+                                </div>
+                            </div>
+                        `},
+                        { name: 'Indenizações', content: `
+                            <h4>Danos Morais</h4>
+                            <p>O cumprimento da assistência material <strong>não isenta</strong> a companhia aérea de uma possível indenização por danos morais. O STJ entende que o dano moral por atraso ou cancelamento não é presumido, ou seja, você precisa provar que a situação ultrapassou um "mero aborrecimento".</p>
+                            <p><strong>A jurisprudência considera dano moral quando o atraso:</strong></p>
+                            <ul class="list-disc list-inside">
+                                <li>É superior a 4 horas (regra não-oficial, mas muito usada).</li>
+                                <li>Resulta na perda de um compromisso importante (reunião, casamento, funeral).</li>
+                                <li>Leva à perda de uma conexão, gerando um efeito cascata de problemas.</li>
+                                <li>Ocorre sem a devida assistência da companhia aérea.</li>
+                            </ul>
+                            <p>Consulte o gráfico de estimativas de indenização para ter uma ideia dos valores.</p>
+                            <h4>Danos Materiais</h4>
+                            <p>Guarde notas fiscais de todos os gastos extras que você teve por causa do problema: alimentação, transporte, hospedagem, ligações, etc. Esses valores podem ser ressarcidos.</p>
+                        `},
+                        { name: 'Como Agir', type: 'checklist', items: [
+                            { text: 'No aeroporto, exija seus direitos de assistência (comunicação, alimentação, etc.).' },
+                            { text: 'Procure o balcão da empresa, registre uma queixa e pegue um número de protocolo.' },
+                            { text: 'Tire fotos dos painéis de voo mostrando o status de "atrasado" ou "cancelado".' },
+                            { text: 'Guarde todos os comprovantes de gastos extras (alimentação, transporte, hospedagem).' },
+                            { text: 'Tente a resolução via <a href="https://consumidor.gov.br" target="_blank" class="text-amber-600 hover:underline">Consumidor.gov.br</a>.' },
+                            { text: 'Se não houver acordo, reúna todos os documentos para uma ação judicial.' }
+                        ]}
+                    ]
+                },
+                bagagem: {
+                    title: 'Extravio, Avaria ou Furto de Bagagem',
+                    tabs: [
+                        { name: 'Direitos Imediatos', content: `
+                            <h4>Passo a Passo Imediato</h4>
+                             <ol class="list-decimal list-inside space-y-2">
+                                <li><strong>Percebeu o problema?</strong> Assim que notar que sua bagagem não chegou na esteira (ou chegou danificada), não saia da área de desembarque.</li>
+                                <li><strong>Procure a companhia aérea:</strong> Vá imediatamente ao balcão da sua companhia aérea dentro da sala de desembarque.</li>
+                                <li><strong>Preencha o RIB:</strong> O passo mais importante é preencher o <strong>Registro de Irregularidade de Bagagem (RIB)</strong>. Este documento é a prova formal de que você reclamou no momento certo. Descreva sua mala e, se possível, os itens de maior valor dentro dela.</li>
+                                <li><strong>Ajuda de custo:</strong> Se você estiver fora de sua cidade de domicílio, a companhia aérea deve oferecer uma ajuda de custo emergencial para a compra de itens de primeira necessidade (higiene, uma troca de roupa). Os valores e políticas variam, mas é seu direito solicitar.</li>
+                            </ol>
+                            <h4>Prazos para Localização</h4>
+                             <ul class="list-disc list-inside">
+                                <li><strong>Voo doméstico:</strong> A empresa tem até 7 dias para localizar e devolver sua bagagem.</li>
+                                <li><strong>Voo internacional:</strong> O prazo é de 21 dias.</li>
+                                <li>Se a bagagem não for encontrada nesses prazos, ela é considerada definitivamente extraviada, e a empresa deve te indenizar em até 7 dias.</li>
+                            </ul>
+                        `},
+                        { name: 'Indenizações', content: `
+                            <h4>Danos Morais</h4>
+                            <p>O extravio de bagagem, mesmo que temporário, gera dano moral. A Súmula nº 45 do TJRJ confirma que a indenização é devida. A angústia de ficar sem seus pertences, especialmente em uma viagem, configura o dano. O valor pode ser maior no caso de extravio definitivo.</p>
+                             <h4>Danos Materiais</h4>
+                            <p>Aqui está a grande diferença entre voos nacionais e internacionais:</p>
+                             <ul class="list-disc list-inside">
+                                <li><strong>Voos Nacionais:</strong> Prevalece o Código de Defesa do Consumidor. A indenização deve ser <strong>integral</strong>, ou seja, cobrir o valor real dos bens perdidos. Os tribunais entendem que é "irrazoável" exigir nota fiscal de tudo. A indenização é fixada com base na razoabilidade, considerando o destino, a duração da viagem e a descrição dos bens no RIB.</li>
+                                <li><strong>Voos Internacionais:</strong> Prevalece a Convenção de Montreal. A indenização por dano material (extravio) é <strong>limitada (tarifada)</strong> a aproximadamente 1.288 Direitos Especiais de Saque (DES), uma moeda do FMI. O valor em reais varia, mas fica em torno de R$ 9.000. Este limite só não se aplica se você fez uma declaração especial de valor no momento do despacho.</li>
+                            </ul>
+                        `},
+                         { name: 'Como Agir', type: 'checklist', items: [
+                            { text: 'Imediatamente após notar o problema, preencha o Registro de Irregularidade de Bagagem (RIB) no balcão da companhia.' },
+                            { text: 'Guarde o comprovante de despacho da bagagem e o canhoto do RIB.' },
+                            { text: 'Se estiver fora de sua cidade, solicite a ajuda de custo emergencial.' },
+                            { text: 'Guarde notas fiscais de todos os itens de primeira necessidade que precisar comprar.' },
+                            { text: 'Se a bagagem for avariada, tire fotos detalhadas dos danos.' },
+                            { text: 'Após o prazo legal (7 ou 21 dias), formalize a reclamação de indenização via <a href="https://consumidor.gov.br" target="_blank" class="text-amber-600 hover:underline">Consumidor.gov.br</a> ou diretamente com um advogado.' }
+                        ]}
+                    ]
+                },
+                overbooking: {
+                    title: 'Overbooking (Preterição de Embarque)',
+                    tabs: [
+                        { name: 'Direitos Imediatos', content: `
+                            <p>O *overbooking* (ou preterição de embarque) acontece quando a companhia vende mais passagens do que os assentos disponíveis. Se você for impedido de embarcar por este motivo, a empresa deve, imediatamente, te oferecer as mesmas alternativas de um atraso de 4 horas:</p>
+                             <ul class="list-disc list-inside">
+                                <li><strong>Assistência Material Completa:</strong> Alimentação, comunicação, hospedagem e transporte, conforme a necessidade.</li>
+                                <li><strong>Opções à sua escolha:</strong> Reembolso integral, reacomodação no próximo voo (da própria empresa ou de uma concorrente) ou execução da viagem por outra modalidade.</li>
+                            </ul>
+                            <p class="mt-2">Além disso, a Resolução 400 da ANAC prevê uma <strong>compensação financeira imediata</strong>, a ser paga pela companhia, no valor de:</p>
+                            <ul class="list-disc list-inside">
+                                <li><strong>250 DES</strong> para voos domésticos.</li>
+                                <li><strong>500 DES</strong> para voos internacionais.</li>
+                            </ul>
+                             <p class="mt-2"><strong>Importante:</strong> Aceitar esta compensação imediata não te impede de buscar uma indenização por danos morais na justiça, que costuma ser muito maior.</p>
+                        `},
+                        { name: 'Indenizações', content: `
+                            <h4>Dano Moral Presumido (in re ipsa)</h4>
+                            <p>Este é o ponto crucial. A jurisprudência do STJ é pacífica em considerar que o dano moral no caso de *overbooking* é <strong>presumido (*in re ipsa*)</strong>. </p>
+                            <p>Isso significa que você <strong>não precisa provar</strong> que sofreu um abalo psicológico. O simples fato de ser impedido de embarcar em um voo com reserva confirmada, por uma falha deliberada da empresa, já configura a ofensa e o direito à indenização.</p>
+                            <p>O *overbooking* é tratado com mais rigor pelos tribunais porque não é um imprevisto (como o mau tempo), mas um risco do negócio que a empresa assume e joga para o consumidor. Por isso, os valores de indenização costumam ser os mais altos. Veja a estimativa no gráfico.</p>
+                        `},
+                        { name: 'Como Agir', type: 'checklist', items: [
+                            { text: 'Exija da companhia um documento por escrito que confirme a preterição de embarque por overbooking.' },
+                            { text: 'Aceite a assistência material (alimentação, etc.) e escolha a melhor opção para você (reacomodação ou reembolso).' },
+                            { text: 'Exija o pagamento da compensação financeira imediata (250 ou 500 DES).' },
+                            { text: 'Guarde seu cartão de embarque original e qualquer outro documento do voo.' },
+                            { text: 'Mesmo recebendo a compensação, busque um advogado para ajuizar a ação de dano moral presumido.' }
+                        ]}
+                    ]
+                },
+                alteracao: {
+                    title: 'Alteração Unilateral do Voo',
+                    tabs: [
+                        { name: 'Direitos Imediatos', content: `
+                            <p>A companhia aérea não pode alterar data, horário ou itinerário do seu voo de forma unilateral sem te dar opções. O dever de informação é fundamental.</p>
+                            <ul class="list-disc list-inside space-y-2">
+                                <li>A empresa deve informar sobre qualquer alteração programada com no mínimo <strong>72 horas de antecedência</strong>.</li>
+                                <li>Se a alteração for informada em prazo inferior a 72h, ou se a mudança de horário for superior a <strong>30 minutos (voo doméstico)</strong> ou <strong>1 hora (voo internacional)</strong>, a empresa deve oferecer as opções de:</li>
+                                <ol class="list-decimal list-inside ml-4">
+                                     <li>Reacomodação em outro voo (próprio ou de terceiro).</li>
+                                     <li>Reembolso integral da passagem.</li>
+                                 </ol>
+                            </ul>
+                            <p class="mt-2">Se você não for informado e só descobrir a alteração no aeroporto, aplicam-se as mesmas regras de assistência material de um atraso (comunicação, alimentação, etc.).</p>
+                        `},
+                        { name: 'Indenizações', content: `
+                            <h4>Danos Morais</h4>
+                            <p>A alteração unilateral quebra a boa-fé e a legítima expectativa do consumidor, gerando o dever de indenizar. O dano moral se caracteriza principalmente quando:</p>
+                             <ul class="list-disc list-inside">
+                                <li>A comunicação é feita de última hora ou nem é feita.</li>
+                                <li>A alteração impõe uma viagem muito mais longa, cansativa ou com escalas não previstas.</li>
+                                <li>A mudança de horário ou data te faz perder compromissos, diárias de hotel, passeios, etc.</li>
+                            </ul>
+                            <p>A jurisprudência tende a não conceder dano moral se a alteração foi comunicada com grande antecedência (ex: meses antes), dando tempo para o passageiro se reprogramar.</p>
+                             <h4>Danos Materiais</h4>
+                            <p>Se a alteração te fez perder diárias de hotel não-reembolsáveis, ingressos para eventos ou outros serviços já pagos, você pode pedir o ressarcimento desses valores como dano material.</p>
+                        `},
+                        { name: 'Como Agir', type: 'checklist', items: [
+                            { text: 'Guarde todos os e-mails e mensagens da companhia aérea sobre a alteração.' },
+                            { text: 'Se a alteração foi informada com menos de 72h de antecedência, exija as opções de reacomodação ou reembolso.' },
+                            { text: 'Documente todos os prejuízos materiais (reservas de hotel perdidas, ingressos, etc.) com notas e recibos.' },
+                            { text: 'Caso descubra no aeroporto, peça assistência material e registre uma queixa formal.' },
+                            { text: 'Inicie uma reclamação no <a href="https://consumidor.gov.br" target="_blank" class="text-amber-600 hover:underline">Consumidor.gov.br</a> e, se não resolver, procure um advogado.' }
+                        ]}
+                    ]
+                },
+                noshow: {
+                    title: 'Cancelamento Abusivo por "No-Show"',
+                     tabs: [
+                        { name: 'O que é?', content: `
+                            <p>A prática de "no-show" ocorre quando a companhia aérea <strong>cancela automaticamente o seu trecho de volta</strong> porque você não compareceu para o embarque no trecho de ida.</p>
+                            <p><strong>Exemplo:</strong> Você comprou uma passagem São Paulo -> Rio -> São Paulo. Por algum motivo, você perdeu o voo de ida e decidiu ir para o Rio por outro meio. Ao tentar embarcar no voo de volta (Rio -> São Paulo), você descobre que sua passagem foi cancelada.</p>
+                            <p>O STJ tem um entendimento consolidado de que <strong>esta prática é abusiva e ilegal</strong>.</p>
+                        `},
+                        { name: 'Direitos e Indenizações', content: `
+                            <h4>Prática Abusiva e Dano Moral</h4>
+                            <p>O tribunal considera que, ao comprar ida e volta, você celebrou um contrato de transporte. A não utilização de um trecho não dá à empresa o direito de cancelar o outro unilateralmente. Isso viola a boa-fé objetiva e os princípios do Código de Defesa do Consumidor.</p>
+                             <ul class="list-disc list-inside">
+                                 <li><strong>Direito ao Embarque:</strong> Se você avisar a companhia com antecedência que não usará o trecho de ida, mas quer manter o de volta, ela é obrigada a manter sua reserva.</li>
+                                <li><strong>Dano Moral:</strong> O cancelamento por no-show é considerado gerador de dano moral indenizável. O transtorno de descobrir que seu voo de volta foi cancelado, muitas vezes te forçando a comprar uma nova passagem de última hora (com preços mais altos), ultrapassa o mero aborrecimento.</li>
+                                <li><strong>Dano Material:</strong> O custo da nova passagem que você teve que comprar para voltar pode ser cobrado como dano material.</li>
+                            </ul>
+                        `},
+                        { name: 'Como Agir', type: 'checklist', items: [
+                            { text: 'Se possível, avise a companhia (e anote o protocolo) que não usará a ida, mas quer manter a volta.' },
+                            { text: 'Se o cancelamento ocorrer, guarde o comprovante da passagem original.' },
+                            { text: 'Compre uma nova passagem para voltar e guarde o comprovante de pagamento.' },
+                            { text: 'Peça uma declaração da companhia confirmando o motivo do cancelamento.' },
+                            { text: 'Procure um advogado para ajuizar a ação, pedindo o dano moral e o ressarcimento da nova passagem.' }
+                        ]}
+                    ]
+                },
+            },
+            indemnification: {
+                labels: [
+                    "Atraso (4-8h)", 
+                    "Atraso (>8h / Perda Compromisso)", 
+                    "Perda de Conexão", 
+                    "Overbooking", 
+                    "Cancelamento (s/ assistência)", 
+                    "Extravio Temp. Bagagem", 
+                    "Extravio Def. Bagagem", 
+                    "Alteração Abusiva"
+                ],
+                data: [
+                    { min: 2000, max: 5000 },
+                    { min: 4000, max: 10000 },
+                    { min: 3000, max: 8000 },
+                    { min: 5000, max: 12000 },
+                    { min: 4000, max: 10000 },
+                    { min: 2000, max: 6000 },
+                    { min: 5000, max: 15000 },
+                    { min: 3000, max: 8000 },
+                ]
+            },
+            comparison: {
+                nacional: [
+                    { title: 'Dano Material', content: '<strong>Reparação Integral</strong><br>(Código de Defesa do Consumidor - CDC). O valor da indenização deve cobrir todo o prejuízo, sem teto.', icon: '💸' },
+                    { title: 'Dano Moral', content: '<strong>Reparação Integral</strong><br>(CDC). O valor é definido pelo juiz com base na gravidade do caso.', icon: '⚖️' },
+                    { title: 'Prazo para Ação', content: '<strong>5 anos</strong><br>(Art. 27 do CDC) para danos materiais e morais.', icon: '⏳' },
+                ],
+                internacional: [
+                     { title: 'Dano Material', content: '<strong>Reparação Limitada (Tarifada)</strong><br>(Convenção de Montreal). Existe um teto para a indenização (ex: ~1.288 DES para bagagem).', icon: '💰' },
+                    { title: 'Dano Moral', content: '<strong>Reparação Integral</strong><br>(CDC). O STF decidiu que os limites da Convenção <strong>não se aplicam</strong> ao dano moral.', icon: '⚖️' },
+                    { title: 'Prazo para Ação', content: '<strong>2 anos</strong> para Dano Material (Convenção) e <strong>5 anos</strong> para Dano Moral (CDC).', icon: '⏳' },
+                ]
+            },
+            fundamentos: [
+                { title: 'Código de Defesa do Consumidor (CDC)', content: 'É a lei principal que protege o passageiro em voos domésticos. Estabelece a responsabilidade objetiva (a empresa responde independentemente de culpa) e a reparação integral dos danos (morais e materiais).' },
+                { title: 'Convenção de Montreal', content: 'É um tratado internacional que regula os voos internacionais. Sua principal característica é a limitação (tarifação) da indenização por danos materiais, como extravio de bagagem. No Brasil, por decisão do STF, ela prevalece sobre o CDC apenas para danos materiais em voos internacionais.' },
+                { title: 'Resolução 400 da ANAC', content: 'É a norma administrativa que detalha os deveres de informação e assistência material (alimentação, hospedagem) que as companhias devem prestar em caso de atrasos, cancelamentos e overbooking. Ela cuida dos direitos imediatos do passageiro no aeroporto.' },
+                { title: 'Dano Moral "in re ipsa" (Presumido)', content: 'Significa que o dano é tão evidente que não precisa ser provado. A simples ocorrência do fato (como ser vítima de overbooking) já gera o direito à indenização. É a exceção, pois a regra geral é que o dano moral precisa ser comprovado.' },
+                { title: 'Tema 210 do STF', content: 'Foi a decisão do Supremo Tribunal Federal que pacificou o conflito entre o CDC e a Convenção de Montreal. A tese estabeleceu que: 1) para danos materiais em voos internacionais, vale a Convenção (indenização limitada); 2) para danos morais (em qualquer voo) e materiais (em voos domésticos), vale o CDC (indenização integral).' },
+            ],
+            faq: [
+                { title: 'Meu voo atrasou por mau tempo. Tenho direitos?', content: 'Sim. Mesmo em casos de força maior como mau tempo, a companhia aérea ainda é obrigada a fornecer toda a assistência material (comunicação, alimentação, hospedagem). O que pode ser discutido é a indenização por dano moral, que muitos juízes negam nesses casos por não ser culpa da empresa.' },
+                { title: 'Perdi um compromisso de trabalho por causa do atraso. O que fazer?', content: 'Este é um forte argumento para o dano moral. Reúna todas as provas do compromisso (e-mails, convites, inscrições em eventos) e, se possível, provas do prejuízo financeiro que a ausência causou. A perda de um compromisso profissional importante eleva o valor da indenização.' },
+                { title: 'A companhia aérea pode cobrar para marcar assento?', content: 'Sim, a marcação de assento com antecedência é um serviço acessório e a cobrança é permitida pela ANAC. No entanto, no momento do check-in (online ou presencial), a empresa deve te alocar em um assento de forma gratuita, ainda que aleatoriamente.' },
+                { title: 'Comprei a passagem por uma agência de viagens (Decolar, 123Milhas). Quem eu processo?', content: 'O Código de Defesa do Consumidor estabelece a responsabilidade solidária. Isso significa que você pode processar tanto a companhia aérea quanto a agência de viagens, ou ambas em conjunto. Geralmente, a ação é direcionada contra a companhia aérea, que é a executora do serviço de transporte.' },
+                { title: 'Preciso de advogado para entrar no Juizado Especial Cível (JEC)?', content: 'Para causas com valor de até 20 salários mínimos, não é obrigatória a presença de um advogado. Para causas entre 20 e 40 salários mínimos, a presença de um advogado é obrigatória. Contudo, mesmo em causas de menor valor, ter um advogado especialista aumenta significativamente as chances de sucesso e de obter uma indenização justa.' }
+            ]
+        };
+
+        let chartInstance = null;
+
+        document.addEventListener('DOMContentLoaded', () => {
+            const problemSelector = document.getElementById('problem-selector');
+            const infractionFilter = document.getElementById('infraction-filter');
+            const comparisonToggleBtns = document.querySelectorAll('.comparison-toggle-btn');
+            const accordionContainerFundamentos = document.getElementById('accordion-container-fundamentos');
+            const accordionContainerFaq = document.getElementById('accordion-container-faq');
+            
+            appData.problems.forEach(problem => {
+                const button = document.createElement('button');
+                button.className = 'nav-button text-left p-4 bg-white rounded-xl shadow-md hover:shadow-lg hover:bg-amber-50 border border-slate-200 smooth-transition';
+                button.dataset.problemId = problem.id;
+                button.innerHTML = `<span class="text-2xl">${problem.icon}</span><h4 class="font-bold mt-2 text-slate-800">${problem.title}</h4>`;
+                button.addEventListener('click', () => displayContent(problem.id));
+                problemSelector.appendChild(button);
+            });
+
+            appData.indemnification.labels.forEach((label, index) => {
+                const option = document.createElement('option');
+                option.value = index;
+                option.textContent = label;
+                infractionFilter.appendChild(option);
+            });
+
+            infractionFilter.addEventListener('change', (e) => {
+                updateChart(e.target.value);
+            });
+            
+            comparisonToggleBtns.forEach(btn => {
+                btn.addEventListener('click', () => {
+                    comparisonToggleBtns.forEach(b => b.classList.remove('active'));
+                    btn.classList.add('active');
+                    displayComparison(btn.dataset.type);
+                });
+            });
+
+            createAccordion(accordionContainerFundamentos, appData.fundamentos);
+            createAccordion(accordionContainerFaq, appData.faq);
+
+            initializeChart();
+            displayComparison('nacional');
+            document.querySelector('.comparison-toggle-btn[data-type="nacional"]').classList.add('active');
+
+        });
+
+        function createAccordion(container, data) {
+            data.forEach((item) => {
+                const div = document.createElement('div');
+                div.className = 'bg-white rounded-lg border border-slate-200 shadow-sm';
+                div.innerHTML = `
+                    <button class="accordion-toggle flex justify-between items-center w-full p-4 text-left font-semibold">
+                        <span>${item.title}</span>
+                        <span class="accordion-icon text-amber-500 transform transition-transform">▼</span>
+                    </button>
+                    <div class="accordion-content hidden p-4 pt-0 text-slate-600">
+                        ${item.content}
+                    </div>
+                `;
+                container.appendChild(div);
+            });
+            
+            container.querySelectorAll('.accordion-toggle').forEach(button => {
+                button.addEventListener('click', () => {
+                    const content = button.nextElementSibling;
+                    const icon = button.querySelector('.accordion-icon');
+                    content.classList.toggle('hidden');
+                    icon.classList.toggle('rotate-180');
+                });
+            });
+        }
+        
+        function displayContent(problemId) {
+            const data = appData.content[problemId];
+            const contentArea = document.getElementById('dynamic-content-area');
+            const titleEl = document.getElementById('content-title');
+            const tabsEl = document.getElementById('content-tabs');
+            const displayEl = document.getElementById('content-display');
+
+            document.querySelectorAll('#problem-selector .nav-button').forEach(btn => btn.classList.remove('active'));
+            document.querySelector(`[data-problem-id="${problemId}"]`).classList.add('active');
+
+            titleEl.textContent = data.title;
+            
+            tabsEl.innerHTML = '';
+            data.tabs.forEach((tab, index) => {
+                const tabButton = document.createElement('button');
+                tabButton.className = 'tab-button py-2 px-4 text-sm font-semibold rounded-md border-b-2 border-transparent smooth-transition';
+                tabButton.textContent = tab.name;
+                tabButton.addEventListener('click', () => {
+                    renderTabContent(displayEl, tab);
+                    document.querySelectorAll('#content-tabs .tab-button').forEach(btn => btn.classList.remove('active'));
+                    tabButton.classList.add('active');
+                });
+                tabsEl.appendChild(tabButton);
+            });
+
+            renderTabContent(displayEl, data.tabs[0]);
+            tabsEl.firstChild.classList.add('active');
+
+            contentArea.classList.remove('hidden');
+            contentArea.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }
+
+        function renderTabContent(container, tabData) {
+            if (tabData.type === 'checklist') {
+                let checklistHtml = '<div class="space-y-3">';
+                tabData.items.forEach((item, index) => {
+                    checklistHtml += `
+                        <div class="checklist-item flex items-center p-3 rounded-md border border-slate-200">
+                            <input type="checkbox" id="check-${index}" class="h-5 w-5 rounded border-gray-300 text-amber-600 focus:ring-amber-500">
+                            <label for="check-${index}" class="ml-3 text-slate-700">${item.text}</label>
+                        </div>
+                    `;
+                });
+                checklistHtml += '</div>';
+                container.innerHTML = checklistHtml;
+            } else {
+                container.innerHTML = tabData.content;
+            }
+        }
+        
+        function displayComparison(type) {
+            const data = appData.comparison[type];
+            const displayEl = document.getElementById('comparison-display');
+            displayEl.innerHTML = '';
+            
+            data.forEach(item => {
+                const card = document.createElement('div');
+                card.className = 'bg-slate-100 p-6 rounded-lg';
+                card.innerHTML = `
+                    <div class="text-4xl mb-3">${item.icon}</div>
+                    <h4 class="font-bold text-lg mb-2 text-slate-900">${item.title}</h4>
+                    <p class="text-slate-600">${item.content}</p>
+                `;
+                displayEl.appendChild(card);
+            });
+        }
+
+        function initializeChart() {
+            const ctx = document.getElementById('indemnificationChart').getContext('2d');
+            const data = appData.indemnification.data;
+            const labels = appData.indemnification.labels;
+
+            const datasets = [
+                {
+                    label: 'Mínimo (R$)',
+                    data: data.map(d => d.min),
+                    backgroundColor: 'rgba(251, 146, 60, 0.6)',
+                    borderColor: 'rgba(251, 146, 60, 1)',
+                    borderWidth: 1,
+                    stack: 'Stack 0',
+                },
+                {
+                    label: 'Máximo (R$)',
+                    data: data.map(d => d.max - d.min),
+                    backgroundColor: 'rgba(245, 158, 11, 0.6)',
+                    borderColor: 'rgba(245, 158, 11, 1)',
+                    borderWidth: 1,
+                    stack: 'Stack 0',
+                },
+            ];
+
+            chartInstance = new Chart(ctx, {
+                type: 'bar',
+                data: {
+                    labels: labels,
+                    datasets: datasets,
+                },
+                options: {
+                    maintainAspectRatio: false,
+                    responsive: true,
+                    indexAxis: 'y',
+                    plugins: {
+                        title: { display: false },
+                        legend: { display: true, position: 'bottom' },
+                        tooltip: {
+                            callbacks: {
+                                label: function(context) {
+                                    const rawMin = context.chart.data.datasets[0].data[context.dataIndex];
+                                    const rawRange = context.chart.data.datasets[1].data[context.dataIndex];
+                                    const rawMax = rawMin + rawRange;
+                                    return `Faixa: R$ ${rawMin.toLocaleString('pt-BR')} - R$ ${rawMax.toLocaleString('pt-BR')}`;
+                                }
+                            }
+                        }
+                    },
+                    scales: {
+                        x: {
+                            stacked: true,
+                             title: {
+                                display: true,
+                                text: 'Valor da Indenização (R$)'
+                            }
+                        },
+                        y: { stacked: true }
+                    }
+                }
+            });
+        }
+        
+        function updateChart(selectedIndex) {
+            const allData = appData.indemnification;
+            const labels = selectedIndex ? [allData.labels[selectedIndex]] : allData.labels;
+            const dataPoints = selectedIndex ? [allData.data[selectedIndex]] : allData.data;
+
+            chartInstance.data.labels = labels;
+            chartInstance.data.datasets[0].data = dataPoints.map(d => d.min);
+            chartInstance.data.datasets[1].data = dataPoints.map(d => d.max - d.min);
+            chartInstance.update();
+        }
+
+    </script>
+</body>
+</html>
